@@ -70,6 +70,7 @@
             </div>
         </div>
     </div>
+
     {# First row: revenue over time and, for a manager, the leaderboard. Without a leaderboard the chart takes the full width. #}
     <div class="row g-3 mb-3">
         <div class="{% if leaderboard %}col-lg-6{% else %}col-12{% endif %}">
@@ -105,6 +106,7 @@
                 </div>
             </div>
         </div>
+
         {% if leaderboard %}
             <div class="col-lg-6">
                 {# Leaderboard (managers only): every employee ranked by revenue, with names and dollars. #}
@@ -113,8 +115,7 @@
                         <div class="h5 mb-1">Employee Leaderboard</div>
                         <p class="text-muted small mb-1">Every employee ranked by revenue on the orders they handled. Visible to managers only.</p>
                         <div class="table-responsive dt-leaderboard-scroll">
-                            <table id="leaderboard-table"
-                                   class="table table-sm table-hover align-middle small mb-0 w-100">
+                            <table id="leaderboard-table" class="table table-sm table-hover align-middle small mb-0 w-100">
                                 <thead>
                                     <tr>
                                         <th>Rank</th>
@@ -144,49 +145,31 @@
             </div>
         {% endif %}
     </div>
+
     {# Second row: the revenue breakdown ("Revenue by", or an employee's share of each group) and the top customers. #}
     <div class="row g-3 mb-3">
         <div class="col-lg-6">
-            {# Revenue breakdown: a manager sees every group's revenue; everyone else sees their own share of each group's revenue (percentages only). #}
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    {# A navbar as the chart's header: "Show Top" (radio buttons: 5, 10, All) at the start, "Revenue by" at the end. Bootstrap's .navbar spaces its two children to opposite ends. #}
                     <nav class="navbar bg-light rounded px-3 py-2 mb-2">
-                        <div class="d-flex align-items-center gap-2"
-                             role="radiogroup"
-                             aria-labelledby="breakdown-top-label">
+                        <div class="d-flex align-items-center gap-2" role="radiogroup" aria-labelledby="breakdown-top-label">
                             <span id="breakdown-top-label" class="fw-bold">Show Top</span>
                             <div class="form-check form-check-inline mb-0">
-                                <input class="form-check-input"
-                                       type="radio"
-                                       name="breakdown-top"
-                                       id="breakdown-top-5"
-                                       value="5">
+                                <input class="form-check-input" type="radio" name="breakdown-top" id="breakdown-top-5" value="5">
                                 <label class="form-check-label" for="breakdown-top-5">5</label>
                             </div>
                             <div class="form-check form-check-inline mb-0">
-                                <input class="form-check-input"
-                                       type="radio"
-                                       name="breakdown-top"
-                                       id="breakdown-top-10"
-                                       value="10"
-                                       checked>
+                                <input class="form-check-input" type="radio" name="breakdown-top" id="breakdown-top-10" value="10" checked>
                                 <label class="form-check-label" for="breakdown-top-10">10</label>
                             </div>
                             <div class="form-check form-check-inline mb-0">
-                                <input class="form-check-input"
-                                       type="radio"
-                                       name="breakdown-top"
-                                       id="breakdown-top-all"
-                                       value="all">
+                                <input class="form-check-input" type="radio" name="breakdown-top" id="breakdown-top-all" value="all">
                                 <label class="form-check-label" for="breakdown-top-all">All</label>
                             </div>
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <label for="breakdown-by" class="fw-bold mb-0">Revenue by</label>
-                            <select id="breakdown-by"
-                                    class="form-select w-auto"
-                                    data-url="{% url 'djtraders:employee_breakdown_chart' employee.employee_id %}">
+                            <select id="breakdown-by" class="form-select w-auto" data-url="{% url 'djtraders:employee_breakdown_chart' employee.employee_id %}">
                                 <option value="supplier" selected>Supplier</option>
                                 <option value="product">Product</option>
                                 <option value="category">Category</option>
@@ -207,9 +190,7 @@
         <div class="col-lg-6">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    {# Top customers: "Show Top" radio buttons (5, 10, All) reload only the chart; employee_customer_chart checks the value. #}
-                    <nav id="customer-controls" class="navbar bg-light rounded px-3 py-2 mb-2"
-                         data-url="{% url 'djtraders:employee_customer_chart' employee.employee_id %}">
+                    <nav id="customer-controls" class="navbar bg-light rounded px-3 py-2 mb-2" data-url="{% url 'djtraders:employee_customer_chart' employee.employee_id %}">
                         <div class="d-flex align-items-center gap-2" role="radiogroup" aria-labelledby="customer-top-label">
                             <span id="customer-top-label" class="fw-bold">Show Top</span>
                             <div class="form-check form-check-inline mb-0">
@@ -231,56 +212,158 @@
             </div>
         </div>
     </div>
-    {# Compared with the team: the chart and table come from Employee.team_comparison(). Averages and a nameless best, so no colleague is identified. #}
+
+    {# Third row: Requirement 1 — Employee Category Mix (Compared with the team) #}
     <div class="row g-3 mb-3">
-        <div class="col-lg-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">{{ comparison_plot|safe }}</div>
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="card border-0 shadow-sm h-100">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <div class="h5 mb-1">{{ you_label }} vs. the team</div>
-                    <p class="text-muted small">Team average is the mean across all employees. Best is the highest employee on that measure. Rank 1 is best.</p>
-                    <table class="table table-hover align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Measure</th>
-                                <th class="text-end">{{ you_label }}</th>
-                                <th class="text-end">Team average</th>
-                                <th class="text-end">Best</th>
-                                <th class="text-end">Rank</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in comparison %}
-                                <tr>
-                                    <td>{{ row.label }}</td>
-                                    {% if row.kind == "money" %}
-                                        <td class="text-end fw-bold">${{ row.you|floatformat:0|intcomma }}</td>
-                                        <td class="text-end">${{ row.team_average|floatformat:0|intcomma }}</td>
-                                        <td class="text-end">${{ row.best|floatformat:0|intcomma }}</td>
-                                    {% else %}
-                                        <td class="text-end fw-bold">{{ row.you|floatformat:0|intcomma }}</td>
-                                        <td class="text-end">{{ row.team_average|floatformat:0|intcomma }}</td>
-                                        <td class="text-end">{{ row.best|floatformat:0|intcomma }}</td>
-                                    {% endif %}
-                                    <td class="text-end">{{ row.rank }} of {{ row.employee_count }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    <div class="h5 mb-1">Employee Category Mix</div>
+                    <p class="text-muted small mb-3">
+                        Revenue by category shown as a percent of total revenue vs. the whole team's category share. 
+                        No other individual employee data or identity is exposed.
+                    </p>
+                    
+                    {% if category_mix_chart_html %}
+                        <div class="dt-chart-container">
+                            {{ category_mix_chart_html|safe }}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <p class="text-muted small mb-0">
+                                <i class="fa-solid fa-chart-column fs-4 mb-2 d-block text-secondary"></i>
+                                No category history found for this employee to plot.
+                            </p>
+                        </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
-    {# The Details modal for the revenue-over-time table. Its contents are loaded by AJAX (employee_period_detail); ActivateRevenueOverTime moves it to <body> before showing it. #}
-    <div class="modal fade" id="revenue-modal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content" id="revenue-modal-content"></div>
+{% endif %} {# This closes the single top-level {% if revenue_plot %} block #}
+
+    {# Second row: Requirement 1 — Employee Category Mix #}
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title fw-bold mb-1">Employee Category Mix</h5>
+                    <p class="text-muted small mb-3">Your percentage share of revenue by category compared against the entire team's average.</p>
+                    
+                    {% if category_names %}
+                        <!-- Chart Workspace Container -->
+                        <div style="position: relative; height:320px; width:100%;">
+                            <canvas id="categoryMixChart"></canvas>
+                        </div>
+                    {% else %}
+                        <!-- Graceful Polish fallback for empty / minimalist datasets -->
+                        <div class="text-center py-5">
+                            <p class="text-muted mb-0"><i class="fa-solid fa-chart-bar fs-4 mb-2 d-block"></i>No order lines found to compute a category percentage mix.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
-{% else %}
-    <p class="text-muted">No placed orders on record for {{ employee.first_name }} {{ employee.last_name }} yet.</p>
-{% endif %}
+
+    {# Third row: Requirement 1 — Employee Category Mix (Compared with the team) #}
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <!-- Uses project stylesheet card formatting layout tokens -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="h5 mb-1 text-dark">Employee Category Mix</div>
+                    <p class="text-muted small mb-3">
+                        Your revenue distribution by product category compared against the overall team average share.
+                    </p>
+                    
+                    {# Polish Verification View: Check if data arrays contain any positive values before creating chart space #}
+                    {% if category_mix_chart_html %}
+                        <div class="dt-chart-wrapper position-relative" style="min-height: 340px; width: 100%;">
+                            {{ category_mix_chart_html|safe }}
+                        </div>
+                    {% else %}
+                        <!-- Clean, styled fallback matching DjangoTraders visual standards for minimalist data profiles -->
+                        <div class="text-center py-5 border rounded bg-light my-2">
+                            <span class="text-secondary opacity-50 fs-2 d-block mb-2">
+                                <i class="fa-solid fa-chart-column"></i>
+                            </span>
+                            <div class="fw-bold text-dark small">No Comparative Sales Mix on Record</div>
+                            <p class="text-muted small mb-0 px-3">
+                                As you handle more client transactions, your performance split percentages will automatically plot here.
+                            </p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+<!-- Script block to inject context cleanly and render Chart.js -->
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const mixCanvas = document.getElementById('categoryMixChart');
+        if (mixCanvas) {
+            // Safely grab the template list variables passed from your Django view context
+            const labels = {{ category_names|default:"[]"|safe }};
+            const employeeData = {{ employee_shares|default:"[]"|safe }};
+            const teamData = {{ team_shares|default:"[]"|safe }};
+
+            const ctx = mixCanvas.getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Your Mix (%)',
+                            data: employeeData,
+                            backgroundColor: '#2b5797', // Slate/Blue to match project style
+                            borderRadius: 4,
+                            barPercentage: 0.8,
+                            categoryPercentage: 0.6
+                        },
+                        {
+                            label: 'Team Average (%)',
+                            data: teamData,
+                            backgroundColor: '#9bc2cf', // Contrast color to group next to individual mix
+                            borderRadius: 4,
+                            barPercentage: 0.8,
+                            categoryPercentage: 0.6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle' }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ' ' + context.dataset.label + ': ' + context.raw + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) { return value + '%'; }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>

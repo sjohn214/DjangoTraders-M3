@@ -247,13 +247,16 @@ def employee_dashboard_view(request):
     
     # 3. Compute Employee's Own Mix (adds up to 100%)
     emp_df = df[df['order__employee_id'] == employee.id]
-    if not emp_df.empty:
+    
+    if not emp_df.empty and emp_df['revenue'].sum() > 0:
         emp_cat = emp_df.groupby('Category')['revenue'].sum()
         emp_share = (emp_cat / emp_cat.sum()) * 100
         emp_mix = emp_share.reset_index(name='Share')
         emp_mix['Type'] = 'My Mix'
     else:
-        emp_mix = pd.DataFrame(columns=['Category', 'Share', 'Type'])
+        # Polish Safety Gate: Empty matrix template mapping if orders are missing
+        categories_list = list(df['Category'].unique()) if not df.empty else []
+        emp_mix = pd.DataFrame({'Category': categories_list, 'Share': 0.0, 'Type': 'My Mix'})
         
     # 4. Compute Team Mix (adds up to 100% | Secure: no names or raw dollars leaked)
     team_cat = df.groupby('Category')['revenue'].sum()
@@ -270,15 +273,38 @@ def employee_dashboard_view(request):
         x='Category', 
         y='Share', 
         color='Type', 
-        barmode='group',  # Required for side-by-side grouped bars
+        barmode='group',
         labels={'Share': 'Percent of Total Revenue (%)', 'Category': 'Product Category'},
-        title="My Category Mix vs. Team Average"
+        # Pairs your custom palette hex selections explicitly to match project theme guidelines
+        color_discrete_map={
+            'My Mix': '#2b5797',        # Slate Blue accent
+            'Team Average': '#da532c'   # Terracotta/Steel accent
+        }
     )
     
-    # Match layout choices to project standards
+    # Text and scale configuration details matching project theme benchmarks
     fig.update_layout(
         template="plotly_white",
-        yaxis_ticksuffix="%"  # Cleaner visual execution
+        hovermode="x unified",
+        margin=dict(l=45, r=20, t=15, b=45),
+        yaxis=dict(
+            ticksuffix="%",
+            range=[0, 100],  # Keeps chart bounds proportional even if individual scales are minimal
+            title_font=dict(size=12, color="#495057"),
+            tickfont=dict(size=11, color="#6c757d")
+        ),
+        xaxis=dict(
+            title_font=dict(size=12, color="#495057"),
+            tickfont=dict(size=11, color="#6c757d")
+        ),
+        legend=dict(
+            title_text="",
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
     # Convert the dynamic plot into an HTML string component
@@ -408,8 +434,30 @@ def customer_dashboard(request, customer_id):
     if _customer_tab_denied(request, customer_id):
         return HttpResponse(status=403)
     customer = get_object_or_404(Customer, pk=customer_id)
+    # 1. Fetch all matching orders for summary card metric calculations
+    # Using the assignment rule: Price * Qty * (1 - Discount)
+    lines = OrderDetail.objects.filter(order__customer=customer, order__status='placed').values(
+        'order__order_date',
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
+        units=F('quantity')
+    )
+    df = pd.DataFrame(list(lines))
+
+# 1. Fetch all matching orders for summary card metric calculations
+    # Using the assignment rule: Price * Qty * (1 - Discount)
+    lines = OrderDetail.objects.filter(order__customer=customer, order__status='placed').values(
+        'order__order_date',
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
+        units=F('quantity')
+    )
+    df = pd.DataFrame(list(lines))
+
     context = {
         "customer": customer,
+        "cards": cards,
+        "top_revenue_prods": top_revenue_prods,
+        "top_unit_prods": top_unit_prods,
+        "has_data": not df.empty,
         "annual_plot": customer.annual_orders_plot(),
         "order_years": customer.order_years(),
     }
@@ -484,6 +532,37 @@ def customer_orders(request, customer_id):
         "orders": orders,
     })
 
+def customer_interactive_charts(request, customer_id):
+    """
+    AJAX Endpoint: Generates interactive category visualizations (Revenue vs. Units Share) 
+    using Plotly based on a dropdown metric selector toggle without a full page reload.
+    """
+    if _customer_tab_denied(request, customer_id):
+        return HttpResponse(status=403)
+        
+    customer = get_object_or_404(Customer, pk=customer_id)
+    metric = request.GET.get('metric', 'revenue') # 'revenue' or 'units'
+    
+    lines = OrderDetail.objects.filter(order__customer=customer, order__status='placed').values(
+        category=F('product__category__category_name'),
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
+        units=F('quantity')
+    )
+    df = pd.DataFrame(list(lines))
+    
+    if df.empty:
+        return HttpResponse("<p class='text-muted small text-center my-4'>No historic data available to plot categories.</p>")
+        
+    # Aggregate data using the requested parameter tracking metric
+    grouped = df.groupby('category').sum().reset_index()
+    
+    if metric == 'units':
+        fig = px.pie(grouped, values='units', names='category', title="Unit Share Distribution by Category")
+    else:
+        fig = px.bar(grouped, x='category', y='revenue', title="Revenue Share Distribution by Category", labels={'revenue': 'Total Sales ($)', 'category': 'Category'})
+        
+    fig.update_layout(template="plotly_white", height=300, margin=dict(l=20, r=20, t=40, b=20))
+    return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
 
 def product_search_json(request):
     """
