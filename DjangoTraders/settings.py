@@ -132,7 +132,7 @@ DATABASES = {
 		"ENGINE": "django.db.backends.postgresql",
 		"NAME": "DjangoTraders",
 		"USER": "postgres",
-		"PASSWORD": "ISM672Python",
+		"PASSWORD": "P8707",
 		"HOST": "localhost",
 		"PORT": "5432",
     }

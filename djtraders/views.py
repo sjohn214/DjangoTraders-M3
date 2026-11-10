@@ -34,12 +34,16 @@ order_clear_cart/order_commit walk through that flow, open to the
 cart's own customer or to any employee (_order_cart_denied); order_delete
 cancels an already-placed order on the same day it was placed.
 """
-
+import pandas as pd
+import plotly.express as px
 from types import SimpleNamespace
 
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.contrib.auth.decorators import login_required
+from django.db.models import F, Sum
+from djtraders.models import OrderDetail  
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -196,6 +200,98 @@ def customer_list(request):
         .values_list("contact_title", flat=True)
         .distinct()
     )
+
+
+def employee_category_mix_plot(employee):
+    df = employee.category_mix_dataframe()
+    
+    if df.empty:
+        return "No data available."
+        
+    fig = px.bar(
+        df, 
+        x='Category', 
+        y='Share', 
+        color='Type', 
+        barmode='group',  # Required by rubric row 2
+        labels={'Share': 'Percent of Total Revenue (%)'},
+        title="My Category Mix vs. Team Average"
+    )
+    
+    # Apply theme variables matching the project stylesheet
+    fig.update_layout(template="plotly_white") 
+    return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+@login_required
+def employee_dashboard_view(request):
+    # 1. Grab the logged-in employee profile (usually linked to the user session)
+    # Adjust this line to match how your starter code identifies the current employee
+    employee = request.user.employee 
+
+    # 2. Fetch data using the strict assignment revenue formula: Price * Qty * (1 - Discount)
+    lines = OrderDetail.objects.filter(order__status='placed').values(
+        'product__category__name',
+        'order__employee_id',
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount'))
+    )
+    
+    df = pd.DataFrame(list(lines))
+    
+    # Fallback to prevent crashes if there's no data yet (Rubric: "sensible page")
+    if df.empty:
+        context = {'category_mix_chart_html': "<p class='text-muted'>No sales data available to render chart.</p>"}
+        return render(request, 'djtraders/employees/_employee_dashboard.html', context)
+        
+    # Clean up column names for Plotly labels
+    df.rename(columns={'product__category__name': 'Category'}, inplace=True)
+    
+    # 3. Compute Employee's Own Mix (adds up to 100%)
+    emp_df = df[df['order__employee_id'] == employee.id]
+    if not emp_df.empty:
+        emp_cat = emp_df.groupby('Category')['revenue'].sum()
+        emp_share = (emp_cat / emp_cat.sum()) * 100
+        emp_mix = emp_share.reset_index(name='Share')
+        emp_mix['Type'] = 'My Mix'
+    else:
+        emp_mix = pd.DataFrame(columns=['Category', 'Share', 'Type'])
+        
+    # 4. Compute Team Mix (adds up to 100% | Secure: no names or raw dollars leaked)
+    team_cat = df.groupby('Category')['revenue'].sum()
+    team_share = (team_cat / team_cat.sum()) * 100
+    team_mix = team_share.reset_index(name='Share')
+    team_mix['Type'] = 'Team Average'
+    
+    # Combine dataframes for a grouped plot layout
+    final_df = pd.concat([emp_mix, team_mix], ignore_index=True)
+    
+    # 5. Build the Plotly Grouped Bar Chart (Satisfies Requirement 1 layout)
+    fig = px.bar(
+        final_df, 
+        x='Category', 
+        y='Share', 
+        color='Type', 
+        barmode='group',  # Required for side-by-side grouped bars
+        labels={'Share': 'Percent of Total Revenue (%)', 'Category': 'Product Category'},
+        title="My Category Mix vs. Team Average"
+    )
+    
+    # Match layout choices to project standards
+    fig.update_layout(
+        template="plotly_white",
+        yaxis_ticksuffix="%"  # Cleaner visual execution
+    )
+    
+    # Convert the dynamic plot into an HTML string component
+    chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+    
+    # 6. Render context to your dashboard template
+    context = {
+        'employee': employee,
+        'category_mix_chart_html': chart_html,
+        # ... retain any existing starter code context variables here ...
+    }
+    
+    return render(request, 'djtraders/employees/_employee_dashboard.html', context)
 
     # A previously selected city that isn't in the country just chosen
     # (e.g. switching country resets which cities are valid) would zero

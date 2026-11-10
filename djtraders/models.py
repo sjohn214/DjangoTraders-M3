@@ -89,6 +89,42 @@ def _lines_frame(lines):
     frame["customer_name"] = frame["customer_name"].fillna("Unknown customer")
     return frame
 
+def category_mix_dataframe(self):
+    # 1. Fetching data utilizing the explicit order line revenue formula
+    # Revenue = Price * Qty * (1 - Discount)
+    from djtraders.models import OrderDetail  # Local import to avoid circular dependencies
+    
+    lines = OrderDetail.objects.filter(order__status='placed').values(
+        'product__category__name',
+        'order__employee_id',
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount'))
+    )
+    
+    df = pd.DataFrame(list(lines))
+    if df.empty:
+        return pd.DataFrame(columns=['Category', 'Share', 'Type'])
+        
+    # Renamed columns for clarity
+    df.rename(columns={'product__category__name': 'Category'}, inplace=True)
+    
+    # 2. Computed Employee's Own Mix
+    emp_df = df[df['order__employee_id'] == self.id]
+    if not emp_df.empty:
+        emp_cat = emp_df.groupby('Category')['revenue'].sum()
+        emp_share = (emp_cat / emp_cat.sum()) * 100
+        emp_mix = emp_share.reset_index(name='Share')
+        emp_mix['Type'] = 'My Mix'
+    else:
+        emp_mix = pd.DataFrame(columns=['Category', 'Share', 'Type'])
+        
+    # 3. Computed Combined Team Mix (Privacy guaranteed: No names aggregated)
+    team_cat = df.groupby('Category')['revenue'].sum()
+    team_share = (team_cat / team_cat.sum()) * 100
+    team_mix = team_share.reset_index(name='Share')
+    team_mix['Type'] = 'Team Average'
+    
+    # Combined into a unified grouped format
+    return pd.concat([emp_mix, team_mix], ignore_index=True)
 
 def _figure_html(figure):
     """
