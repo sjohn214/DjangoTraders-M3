@@ -427,30 +427,76 @@ def _customer_tab_denied(request, customer_id):
 
 def customer_dashboard(request, customer_id):
     """
-    Dashboard tab: the customer's revenue by year as a Plotly chart
-    (Customer.annual_orders_plot), or a message when there are no placed
-    orders to chart.
+    Dashboard tab: Generates the 4 calculation summary cards, top 10 listings,
+    and initial interactive category plots for the customer.
     """
     if _customer_tab_denied(request, customer_id):
         return HttpResponse(status=403)
+        
     customer = get_object_or_404(Customer, pk=customer_id)
-    # 1. Fetch all matching orders for summary card metric calculations
-    # Using the assignment rule: Price * Qty * (1 - Discount)
-    lines = OrderDetail.objects.filter(order__customer=customer, order__status='placed').values(
+    
+    # FIXED: Removed order__status='placed' and used order__order_date__isnull=False
+    lines = OrderDetail.objects.filter(
+        order__customer=customer, 
+        order__order_date__isnull=False
+    ).values(
+        'order__order_id',
         'order__order_date',
         revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
         units=F('quantity')
     )
     df = pd.DataFrame(list(lines))
+    
+    # Defaults for sparse datasets
+    cards = {
+        'total_revenue': 0.0, 'rev_change_pct': 0.0, 'order_count': 0,
+        'avg_order_value': 0.0, 'last_order_date': 'None'
+    }
+    
+    if not df.empty:
+        df['order__order_date'] = pd.to_datetime(df['order__order_date'])
+        
+        # Use the latest year in the dataset so historical Northwind dates calculate accurately
+        latest_date = df['order__order_date'].max()
+        current_year = latest_date.year
+        
+        # Calculations for metrics
+        cards['total_revenue'] = df['revenue'].sum()
+        cards['order_count'] = df['order__order_id'].nunique()
+        cards['avg_order_value'] = cards['total_revenue'] / cards['order_count'] if cards['order_count'] > 0 else 0
+        cards['last_order_date'] = latest_date.strftime('%Y-%m-%d')
+        
+        # Revenue Change Versus Last Year To Date (YTD)
+        ytd_current = df[
+            (df['order__order_date'].dt.year == current_year) & 
+            (df['order__order_date'].dt.dayofyear <= latest_date.dayofyear)
+        ]['revenue'].sum()
+        
+        ytd_prior = df[
+            (df['order__order_date'].dt.year == (current_year - 1)) & 
+            (df['order__order_date'].dt.dayofyear <= latest_date.dayofyear)
+        ]['revenue'].sum()
+        
+        if ytd_prior > 0:
+            cards['rev_change_pct'] = ((ytd_current - ytd_prior) / ytd_prior) * 100
 
-# 1. Fetch all matching orders for summary card metric calculations
-    # Using the assignment rule: Price * Qty * (1 - Discount)
-    lines = OrderDetail.objects.filter(order__customer=customer, order__status='placed').values(
-        'order__order_date',
-        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
-        units=F('quantity')
+    # 2. Get Top 10 Products by Revenue and Units (FIXED filter)
+    prod_lines = OrderDetail.objects.filter(
+        order__customer=customer, 
+        order__order_date__isnull=False
+    ).values(
+        name=F('product__product_name')
+    ).annotate(
+        total_rev=Sum(F('unit_price') * F('quantity') * (1.0 - F('discount'))),
+        total_units=Sum('quantity')
     )
-    df = pd.DataFrame(list(lines))
+    prod_df = pd.DataFrame(list(prod_lines))
+    
+    top_revenue_prods = []
+    top_unit_prods = []
+    if not prod_df.empty:
+        top_revenue_prods = prod_df.sort_values(by='total_rev', ascending=False).head(10).to_dict('records')
+        top_unit_prods = prod_df.sort_values(by='total_units', ascending=False).head(10).to_dict('records')
 
     context = {
         "customer": customer,
@@ -462,6 +508,7 @@ def customer_dashboard(request, customer_id):
         "order_years": customer.order_years(),
     }
     return render(request, "djtraders/customers/_customer_dashboard.html", context)
+
 
 
 def customer_monthly_chart(request, customer_id):
@@ -534,35 +581,64 @@ def customer_orders(request, customer_id):
 
 def customer_interactive_charts(request, customer_id):
     """
-    AJAX Endpoint: Generates interactive category visualizations (Revenue vs. Units Share) 
-    using Plotly based on a dropdown metric selector toggle without a full page reload.
+    AJAX Endpoint: Updates either the Category chart (Revenue vs. Units %) 
+    or the Top 10 Products chart (Revenue vs. Units) without a page reload.
     """
     if _customer_tab_denied(request, customer_id):
         return HttpResponse(status=403)
         
     customer = get_object_or_404(Customer, pk=customer_id)
-    metric = request.GET.get('metric', 'revenue') # 'revenue' or 'units'
+    chart_target = request.GET.get('target', 'category') # 'category' or 'products'
+    metric = request.GET.get('metric', 'revenue')        # 'revenue' or 'units'
     
-    lines = OrderDetail.objects.filter(order__customer=customer, order__status='placed').values(
+    lines = OrderDetail.objects.filter(
+        order__customer=customer, 
+        order__order_date__isnull=False
+    ).values(
         category=F('product__category__category_name'),
+        product_name=F('product__product_name'),
         revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
         units=F('quantity')
     )
     df = pd.DataFrame(list(lines))
     
     if df.empty:
-        return HttpResponse("<p class='text-muted small text-center my-4'>No historic data available to plot categories.</p>")
+        return HttpResponse("<p class='text-muted small text-center my-4'>No order data available to plot.</p>")
         
-    # Aggregate data using the requested parameter tracking metric
-    grouped = df.groupby('category').sum().reset_index()
-    
-    if metric == 'units':
-        fig = px.pie(grouped, values='units', names='category', title="Unit Share Distribution by Category")
+    if chart_target == 'category':
+        grouped = df.groupby('category', as_index=False).sum(numeric_only=True)
+        if metric == 'units':
+            fig = px.pie(grouped, values='units', names='category', title="Unit Share by Category")
+        else:
+            fig = px.pie(grouped, values='revenue', names='category', title="Revenue Share by Category")
+        fig.update_traces(textposition='inside', textinfo='percent+label')
+        
     else:
-        fig = px.bar(grouped, x='category', y='revenue', title="Revenue Share Distribution by Category", labels={'revenue': 'Total Sales ($)', 'category': 'Category'})
-        
-    fig.update_layout(template="plotly_white", height=300, margin=dict(l=20, r=20, t=40, b=20))
+        grouped = df.groupby('product_name', as_index=False).sum(numeric_only=True)
+        if metric == 'units':
+            top10 = grouped.sort_values(by='units', ascending=True).tail(10)
+            fig = px.bar(
+                top10, x='units', y='product_name', orientation='h',
+                title="Top 10 Products by Units Sold",
+                labels={'units': 'Units Sold', 'product_name': ''}
+            )
+        else:
+            top10 = grouped.sort_values(by='revenue', ascending=True).tail(10)
+            fig = px.bar(
+                top10, x='revenue', y='product_name', orientation='h',
+                title="Top 10 Products by Revenue",
+                labels={'revenue': 'Revenue ($)', 'product_name': ''}
+            )
+            fig.update_xaxes(tickprefix="$")
+
+    fig.update_layout(
+        template="plotly_white", 
+        height=350, 
+        margin=dict(l=20, r=20, t=45, b=20),
+        showlegend=False
+    )
     return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
+
 
 def product_search_json(request):
     """

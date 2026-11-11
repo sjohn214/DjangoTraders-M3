@@ -1,31 +1,207 @@
 {# Partial (no base.html) for the Dashboard tab -- customer_dashboard view. #}
-{% if annual_plot %}
+{% load humanize %}
+
+{% if has_data %}
+    {# 1. Four Summary Cards using project stylesheet dt-stat-tile rules #}
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="dt-stat-tile dt-stat-tile-slate card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="dt-stat-label">Total Revenue</div>
+                        <span class="dt-stat-icon"><i class="fa-solid fa-dollar-sign"></i></span>
+                    </div>
+                    <div class="dt-stat-value">${{ cards.total_revenue|floatformat:2|intcomma }}</div>
+                    <div class="dt-stat-note">
+                        <span class="fw-bold {% if cards.rev_change_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            <i class="fa-solid {% if cards.rev_change_pct >= 0 %}fa-arrow-trend-up{% else %}fa-arrow-trend-down{% endif %}"></i>
+                            {{ cards.rev_change_pct|floatformat:1 }}%
+                        </span>
+                        vs prior YTD
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="dt-stat-tile dt-stat-tile-order card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="dt-stat-label">Total Orders</div>
+                        <span class="dt-stat-icon"><i class="fa-solid fa-receipt"></i></span>
+                    </div>
+                    <div class="dt-stat-value">{{ cards.order_count|intcomma }}</div>
+                    <div class="dt-stat-note">Placed orders on record</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="dt-stat-tile dt-stat-tile-steel card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="dt-stat-label">Average Order</div>
+                        <span class="dt-stat-icon"><i class="fa-solid fa-scale-balanced"></i></span>
+                    </div>
+                    <div class="dt-stat-value">${{ cards.avg_order_value|floatformat:2|intcomma }}</div>
+                    <div class="dt-stat-note">Mean spend per order</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="dt-stat-tile dt-stat-tile-sage card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="dt-stat-label">Last Order</div>
+                        <span class="dt-stat-icon"><i class="fa-regular fa-calendar-check"></i></span>
+                    </div>
+                    <div class="dt-stat-value fs-4">{{ cards.last_order_date }}</div>
+                    <div class="dt-stat-note">Most recent order date</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+       {# 2. Existing Starter Charts (Annual & Monthly Revenue Side-by-Side) #}
+    <div class="row g-3 mb-3">
+        <!-- Left Column: Revenue by Year -->
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    {{ annual_plot|safe }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Revenue by Month -->
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <nav id="monthly-controls" class="navbar bg-light rounded px-3 py-2 mb-2"
+                         data-url="{% url 'djtraders:customer_monthly_chart' customer.customer_id %}">
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="monthly-year" class="fw-bold mb-0">Year</label>
+                            <select id="monthly-year" class="form-select w-auto">
+                                {% for year in order_years %}
+                                    <option value="{{ year }}" {% if forloop.last %}selected{% endif %}>{{ year }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </nav>
+                    <div id="dashboard-monthly">
+                        <p class="text-muted small text-center my-4">Loading monthly revenue...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# 3. Interactive Category Mix & Top 10 Products (Requirement 2) #}
     <div class="row g-3 mb-3">
         <div class="col-lg-6">
-            {# Chart 1: revenue by year. It arrives inside the page (Customer.annual_orders_plot). #}
-            <div class="card border-0 shadow-sm h-100"><div class="card-body">
-                {{ annual_plot|safe }}
-            </div></div>
-        </div>
-        <div class="col-lg-6">
-            {# Chart 2: revenue by month for the chosen year. Choosing a year sends it to customer_monthly_chart, and ActivateYearDropdown (DjangoTraders.js) replaces #dashboard-monthly with the chart that comes back. #}
-            <div class="card border-0 shadow-sm h-100"><div class="card-body">
-                <nav class="navbar bg-light rounded px-3 py-2 mb-2">
-                    <div class="d-flex align-items-center gap-2">
-                        <label for="dashboard-year" class="fw-bold mb-0">Year</label>
-                        <select id="dashboard-year"
-                                class="form-select w-auto"
-                                data-url="{% url 'djtraders:customer_monthly_chart' customer.customer_id %}">
-                            {% for year in order_years %}
-                                <option value="{{ year }}"{% if forloop.first %} selected{% endif %}>{{ year }}</option>
-                            {% endfor %}
-                        </select>
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <nav class="navbar bg-light rounded px-3 py-2 mb-2">
+                        <span class="fw-bold">Category Breakdown</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="cust-cat-metric" class="fw-bold mb-0 small">Measure</label>
+                            <select id="cust-cat-metric" class="form-select form-select-sm w-auto">
+                                <option value="revenue" selected>Revenue Share ($)</option>
+                                <option value="units">Unit Share (Qty)</option>
+                            </select>
+                        </div>
+                    </nav>
+                    <div id="cust-category-chart-box">
+                        <p class="text-muted small text-center my-4">Loading category breakdown...</p>
                     </div>
-                </nav>
-                <div id="dashboard-monthly"></div>
-            </div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <nav class="navbar bg-light rounded px-3 py-2 mb-2">
+                        <span class="fw-bold">Top 10 Products</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="cust-prod-metric" class="fw-bold mb-0 small">Rank by</label>
+                            <select id="cust-prod-metric" class="form-select form-select-sm w-auto">
+                                <option value="revenue" selected>Revenue ($)</option>
+                                <option value="units">Units Sold</option>
+                            </select>
+                        </div>
+                    </nav>
+                    <div id="cust-product-chart-box">
+                        <p class="text-muted small text-center my-4">Loading top products...</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 {% else %}
-    <div class="text-muted">This customer has no placed orders to chart yet.</div>
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5">
+            <p class="text-muted mb-0">No placed orders on record for this customer yet.</p>
+        </div>
+    </div>
 {% endif %}
+
+<script>
+    (function() {
+        const baseUrl = "{% url 'djtraders:customer_interactive_charts' customer.customer_id %}";
+
+        function injectPlot(targetId, html) {
+            const container = document.getElementById(targetId);
+            if (!container) return;
+            container.innerHTML = html;
+            container.querySelectorAll("script").forEach(oldScript => {
+                const newScript = document.createElement("script");
+                Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+        }
+
+        function loadCustomerChart(targetType, metric, containerId) {
+            fetch(`${baseUrl}?target=${targetType}&metric=${metric}`)
+                .then(res => res.text())
+                .then(html => injectPlot(containerId, html))
+                .catch(() => {
+                    const el = document.getElementById(containerId);
+                    if (el) el.innerHTML = "<p class='text-muted small text-center my-4'>Unable to load chart.</p>";
+                });
+        }
+
+        const catSelect = document.getElementById("cust-cat-metric");
+        if (catSelect) {
+            catSelect.addEventListener("change", function() {
+                loadCustomerChart("category", this.value, "cust-category-chart-box");
+            });
+            loadCustomerChart("category", catSelect.value, "cust-category-chart-box");
+        }
+
+        const prodSelect = document.getElementById("cust-prod-metric");
+        if (prodSelect) {
+            prodSelect.addEventListener("change", function() {
+                loadCustomerChart("products", this.value, "cust-product-chart-box");
+            });
+            loadCustomerChart("products", prodSelect.value, "cust-product-chart-box");
+        }
+
+                const monthlySelect = document.getElementById("monthly-year");
+        const monthlyUrl = "{% url 'djtraders:customer_monthly_chart' customer.customer_id %}";
+        if (monthlySelect) {
+            function loadMonthlyChart(year) {
+                fetch(`${monthlyUrl}?year=${year}`)
+                    .then(res => res.text())
+                    .then(html => injectPlot("dashboard-monthly", html))
+                    .catch(() => {
+                        const el = document.getElementById("dashboard-monthly");
+                        if (el) el.innerHTML = "<p class='text-muted small text-center my-4'>Unable to load monthly chart.</p>";
+                    });
+            }
+            monthlySelect.addEventListener("change", function() {
+                loadMonthlyChart(this.value);
+            });
+            loadMonthlyChart(monthlySelect.value);
+        }
+    })();
+</script>

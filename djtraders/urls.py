@@ -214,13 +214,16 @@ supplier_products_url = path(
     "suppliers/<int:supplier_id>/products/", views.supplier_products, name="supplier_products"
 )
 
+# GET /djtraders/customers/<customer_id>/interactive-charts/ -> views.customer_interactive_charts
+customer_interactive_charts_url = path(
+    "customers/<str:customer_id>/interactive-charts/",
+    views.customer_interactive_charts,
+    name="customer_interactive_charts",
+)
+
+
 # region [CONCEPT] why this list must be named "urlpatterns"
-# urlpatterns is the one name Django's URL resolver actually looks for in
-# this module -- it must be called exactly that (not e.g. "urls" or
-# "routes") for the project-level urls.py's include("djtraders.urls") to
-# find these routes at all. Each entry above is just a plain variable
-# (home_url, customer_list_url, ...); this list is what turns them into
-# the app's real, ordered set of routes.
+# ... (existing comment block) ...
 # endregion
 urlpatterns = [
     home_url,
@@ -255,6 +258,7 @@ urlpatterns = [
     order_delete_url,
     customer_dashboard_url,
     customer_monthly_chart_url,
+    customer_interactive_charts_url,  # <-- Added here inside the single urlpatterns list
     customer_info_url,
     customer_orders_url,
     supplier_login_url,
