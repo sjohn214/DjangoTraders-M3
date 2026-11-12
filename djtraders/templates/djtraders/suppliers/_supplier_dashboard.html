@@ -187,6 +187,32 @@
             </div>
         </div>
     </div>
+
+    {# 5. Requirement 4 — Custom Question: How do discounts affect order volume & revenue? #}
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <nav class="navbar bg-light rounded px-3 py-2 mb-2">
+                        <div>
+                            <span class="fw-bold">Discount Impact Analysis</span>
+                            <span class="text-muted small ms-2">How do discount tiers affect average line revenue and units sold?</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="sup-discount-mode" class="fw-bold mb-0 small">Metric</label>
+                            <select id="sup-discount-mode" class="form-select form-select-sm w-auto">
+                                <option value="avg_rev" selected>Avg Line Revenue ($)</option>
+                                <option value="units">Total Units Sold</option>
+                            </select>
+                        </div>
+                    </nav>
+                    <div id="sup-discount-box">
+                        <p class="text-muted small text-center my-4">Loading discount analysis...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 {% else %}
     <div class="card border-0 shadow-sm">
         <div class="card-body text-center py-5">
@@ -247,6 +273,20 @@
                 fetch(url)
                     .then(function(r) { return r.text(); })
                     .then(function(html) { injectPlot(boxId, html); });
+            }
+
+            const discountSelect = document.getElementById("sup-discount-mode");
+            const discountUrl = "{% url 'djtraders:supplier_discount_impact' supplier.supplier_id %}";
+            if (discountSelect) {
+                function loadDiscountChart(mode) {
+                    fetch(discountUrl + "?mode=" + encodeURIComponent(mode))
+                        .then(function(r) { return r.text(); })
+                        .then(function(html) { injectPlot("sup-discount-box", html); });
+                }
+                discountSelect.addEventListener("change", function() {
+                    loadDiscountChart(this.value);
+                });
+                loadDiscountChart(discountSelect.value);
             }
 
             const catSelect = document.getElementById("sup-cat-metric");

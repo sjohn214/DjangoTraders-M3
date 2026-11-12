@@ -1280,7 +1280,6 @@ def supplier_monthly_chart(request, supplier_id):
     )
     return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
 
-
 def supplier_interactive_charts(request, supplier_id):
     """
     AJAX Endpoint: Updates Category Breakdown (Revenue vs. Unit Share %)
@@ -1332,10 +1331,85 @@ def supplier_interactive_charts(request, supplier_id):
             )
             fig.update_xaxes(tickprefix="$")
 
-    fig.update_layout(template="plotly_white",
-                height=340,
-                margin=dict(l=20, r=20, t=45, b=20),
-                showlegend=False
+    fig.update_layout(
+        template="plotly_white",
+        height=340,
+        margin=dict(l=20, r=20, t=45, b=20),
+        showlegend=False
+    )
+    return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
+
+
+def supplier_discount_impact(request, supplier_id):
+    """
+    Requirement 4 (Ask Your Own Question):
+    Analyzes how discount tiers affect order line revenue and units sold
+    for this supplier's products, updating dynamically without a page reload.
+    """
+    if _supplier_tab_denied(request, supplier_id):
+        return HttpResponse(status=403)
+
+    supplier = get_object_or_404(Supplier, pk=supplier_id)
+    view_mode = request.GET.get("mode", "avg_rev")  # 'avg_rev' or 'units'
+
+    lines = OrderDetail.objects.filter(
+        product__supplier=supplier,
+        order__order_date__isnull=False
+    ).values(
+        'discount',
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
+        units=F('quantity')
+    )
+    df = pd.DataFrame(list(lines))
+
+    if df.empty:
+        return HttpResponse("<p class='text-muted small text-center my-4'>No order data available to analyze discounts.</p>")
+
+    def classify_discount(d):
+        if d <= 0:
+            return "No Discount (0%)"
+        elif d <= 0.10:
+            return "Small Discount (1–10%)"
+        else:
+            return "Deep Discount (>10%)"
+
+    df['Tier'] = df['discount'].apply(classify_discount)
+    tier_order = ["No Discount (0%)", "Small Discount (1–10%)", "Deep Discount (>10%)"]
+
+    summary = df.groupby('Tier', as_index=False).agg(
+        avg_revenue=('revenue', 'mean'),
+        total_units=('units', 'sum')
+    )
+    # Keep consistent tier ordering even if a tier has zero orders
+    summary = pd.DataFrame({'Tier': tier_order}).merge(summary, on='Tier', how='left').fillna(0)
+
+    if view_mode == "units":
+        fig = px.bar(
+            summary,
+            x='Tier',
+            y='total_units',
+            color='Tier',
+            title="Total Units Sold by Discount Tier",
+            labels={'total_units': 'Total Units Sold', 'Tier': ''},
+            color_discrete_sequence=['#2b5797', '#4e8098', '#da532c']
+        )
+    else:
+        fig = px.bar(
+            summary,
+            x='Tier',
+            y='avg_revenue',
+            color='Tier',
+            title="Average Revenue per Order Line by Discount Tier",
+            labels={'avg_revenue': 'Avg Line Revenue ($)', 'Tier': ''},
+            color_discrete_sequence=['#2b5797', '#4e8098', '#da532c']
+        )
+        fig.update_yaxes(tickprefix="$")
+
+    fig.update_layout(
+        template="plotly_white",
+        height=320,
+        margin=dict(l=20, r=20, t=45, b=20),
+        showlegend=False
     )
     return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
 

@@ -239,6 +239,12 @@ supplier_interactive_charts_url = path(
     name="supplier_interactive_charts",
 )
 
+supplier_discount_impact_url = path(
+    "suppliers/<int:supplier_id>/discount-impact/",
+    views.supplier_discount_impact,
+    name="supplier_discount_impact",
+)
+
 
 # region [CONCEPT] why this list must be named "urlpatterns"
 # ... (existing comment block) ...
@@ -288,4 +294,5 @@ urlpatterns = [
     supplier_dashboard_url,
     supplier_monthly_chart_url,
     supplier_interactive_charts_url,
+    supplier_discount_impact_url,
 ]
