@@ -188,7 +188,7 @@
         </div>
     </div>
 
-    {# 5. Requirement 4 — Custom Question: How do discounts affect order volume & revenue? #}
+    {# 5. Requirement 4 — Custom Question 1: How do discounts affect order volume & revenue? #}
     <div class="row g-3 mb-3">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
@@ -213,10 +213,38 @@
             </div>
         </div>
     </div>
+
+    {# 6. Requirement 4 — Custom Question 2: Which countries generate the most demand? #}
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <nav class="navbar bg-light rounded px-3 py-2 mb-2">
+                        <div>
+                            <span class="fw-bold">Geographic Demand by Country</span>
+                            <span class="text-muted small ms-2">Which customer countries generate the most revenue and unit volume?</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="sup-country-metric" class="fw-bold mb-0 small">Measure</label>
+                            <select id="sup-country-metric" class="form-select form-select-sm w-auto">
+                                <option value="revenue" selected>Revenue ($)</option>
+                                <option value="units">Units Sold</option>
+                            </select>
+                        </div>
+                    </nav>
+                    <div id="sup-country-box">
+                        <p class="text-muted small text-center my-4">Loading country demand...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 {% else %}
     <div class="card border-0 shadow-sm">
         <div class="card-body text-center py-5">
             <p class="text-muted mb-0">No placed orders on record for this supplier's products yet.</p>
+        </div>
+    </div>
 {% endif %}
 
 <script>
@@ -295,6 +323,20 @@
                     loadInteractive("category", this.value, "sup-category-box");
                 });
                 loadInteractive("category", catSelect.value, "sup-category-box");
+            }
+
+            const countrySelect = document.getElementById("sup-country-metric");
+            const countryUrl = "{% url 'djtraders:supplier_country_demand' supplier.supplier_id %}";
+            if (countrySelect) {
+                function loadCountryChart(metric) {
+                    fetch(countryUrl + "?metric=" + encodeURIComponent(metric))
+                        .then(function(r) { return r.text(); })
+                        .then(function(html) { injectPlot("sup-country-box", html); });
+            }
+                countrySelect.addEventListener("change", function() {
+                    loadCountryChart(this.value);
+                });
+                loadCountryChart(countrySelect.value);
             }
 
             const prodSelect = document.getElementById("sup-prod-metric");

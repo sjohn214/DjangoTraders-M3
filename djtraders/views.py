@@ -1413,6 +1413,62 @@ def supplier_discount_impact(request, supplier_id):
     )
     return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
 
+def supplier_country_demand(request, supplier_id):
+    """
+    Requirement 4 (Ask Your Own Question):
+    Shows which customer countries drive the most revenue or units sold
+    for this supplier's products, updating without a page reload.
+    """
+    if _supplier_tab_denied(request, supplier_id):
+        return HttpResponse(status=403)
+
+    supplier = get_object_or_404(Supplier, pk=supplier_id)
+    metric = request.GET.get("metric", "revenue")  # 'revenue' or 'units'
+
+    lines = OrderDetail.objects.filter(
+        product__supplier=supplier,
+        order__order_date__isnull=False
+    ).values(
+        country=F('order__customer__country'),
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
+        units=F('quantity')
+    )
+    df = pd.DataFrame(list(lines))
+
+    if df.empty:
+        return HttpResponse("<p class='text-muted small text-center my-4'>No geographic order data available yet.</p>")
+
+    df['country'] = df['country'].fillna('Unknown')
+    grouped = df.groupby('country', as_index=False).sum(numeric_only=True)
+
+    if metric == "units":
+        grouped = grouped.sort_values(by='units', ascending=False)
+        fig = px.bar(
+            grouped,
+            x='country',
+            y='units',
+            title="Units Sold by Customer Country",
+            labels={'country': 'Country', 'units': 'Units Sold'}
+        )
+    else:
+        grouped = grouped.sort_values(by='revenue', ascending=False)
+        fig = px.bar(
+            grouped,
+            x='country',
+            y='revenue',
+            title="Product Revenue by Customer Country",
+            labels={'country': 'Country', 'revenue': 'Revenue ($)'}
+        )
+        fig.update_yaxes(tickprefix="$")
+
+    fig.update_traces(marker_color='#2b5797')
+    fig.update_layout(
+        template="plotly_white",
+        height=320,
+        margin=dict(l=20, r=20, t=45, b=20)
+    )
+    return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
+
 
 # region [WHY] who may see which employee page
 # An employee's page shows their sales numbers, so it needs a logged-in
