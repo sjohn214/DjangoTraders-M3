@@ -1056,6 +1056,289 @@ def supplier_products(request, supplier_id):
     return _supplier_tab(request, supplier_id, "djtraders/suppliers/_supplier_products.html",
                          lambda supplier: {"rows": supplier.product_revenue()})
 
+def _supplier_tab_denied(request, supplier_id):
+    """True when a logged-in supplier asks for someone else's dashboard."""
+    logged_in_supplier_id = request.session.get("supplier_id")
+    return bool(logged_in_supplier_id) and logged_in_supplier_id != supplier_id
+
+
+def supplier_dashboard(request, supplier_id):
+    """
+    Requirement 3 — Supplier Dashboard:
+    - 4 summary cards (revenue with YTD change, orders, units sold, last order)
+    - Revenue by year with a trend line
+    - Top customers by revenue (company name, order count, share of supplier revenue only)
+    - Anonymized comparison with all suppliers (this supplier, average, unnamed best)
+    """
+    if _supplier_tab_denied(request, supplier_id):
+        return HttpResponse(status=403)
+
+    supplier = get_object_or_404(Supplier, pk=supplier_id)
+
+    # Fetch all placed order lines for THIS supplier's products only
+    lines = OrderDetail.objects.filter(
+        product__supplier=supplier,
+        order__order_date__isnull=False
+    ).values(
+        'order__order_id',
+        'order__order_date',
+        customer_name=F('order__customer__company_name'),
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
+        units=F('quantity')
+    )
+    df = pd.DataFrame(list(lines))
+
+    cards = {
+        'total_revenue': 0.0,
+        'rev_change_pct': 0.0,
+        'order_count': 0,
+        'units_sold': 0,
+        'last_order_date': 'None',
+    }
+    annual_plot = None
+    order_years = []
+    top_customers = []
+
+    if not df.empty:
+        df['order__order_date'] = pd.to_datetime(df['order__order_date'])
+        df['year'] = df['order__order_date'].dt.year
+
+        latest_date = df['order__order_date'].max()
+        current_year = latest_date.year
+
+        cards['total_revenue'] = df['revenue'].sum()
+        cards['order_count'] = df['order__order_id'].nunique()
+        cards['units_sold'] = int(df['units'].sum())
+        cards['last_order_date'] = latest_date.strftime('%Y-%m-%d')
+
+        # YTD change vs prior year
+        ytd_curr = df[
+            (df['year'] == current_year) &
+            (df['order__order_date'].dt.dayofyear <= latest_date.dayofyear)
+        ]['revenue'].sum()
+        ytd_prev = df[
+            (df['year'] == (current_year - 1)) &
+            (df['order__order_date'].dt.dayofyear <= latest_date.dayofyear)
+        ]['revenue'].sum()
+        if ytd_prev > 0:
+            cards['rev_change_pct'] = ((ytd_curr - ytd_prev) / ytd_prev) * 100
+
+        order_years = sorted(df['year'].unique().tolist())
+
+        # Revenue by year with linear trendline (computed with numpy, no statsmodels needed)
+        import numpy as np
+        import plotly.graph_objects as go
+
+        annual_df = df.groupby('year', as_index=False)['revenue'].sum().sort_values('year')
+        fig_annual = go.Figure()
+        fig_annual.add_bar(
+            x=annual_df['year'],
+            y=annual_df['revenue'],
+            name='Annual Revenue',
+            marker_color='#2b5797'
+        )
+
+        if len(annual_df) >= 2:
+            slope, intercept = np.polyfit(annual_df['year'], annual_df['revenue'], 1)
+            trend_y = slope * annual_df['year'] + intercept
+            fig_annual.add_scatter(
+                x=annual_df['year'],
+                y=trend_y,
+                mode='lines+markers',
+                name='Trend Line',
+                line=dict(color='#da532c', width=3, dash='dash')
+            )
+
+        fig_annual.update_xaxes(dtick=1, title_text='Year')
+        fig_annual.update_yaxes(tickprefix="$", title_text='Revenue ($)')
+        fig_annual.update_layout(
+            title="Revenue by Year (with Trend Line)",
+            template="plotly_white",
+            height=340,
+            margin=dict(l=20, r=20, t=45, b=20),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        annual_plot = fig_annual.to_html(full_html=False, include_plotlyjs=True)
+
+        # Top customers by revenue: company name, order count, and share of supplier's revenue ONLY
+        cust_df = df.groupby('customer_name', as_index=False).agg(
+            orders=('order__order_id', 'nunique'),
+            rev=('revenue', 'sum')
+        ).sort_values(by='rev', ascending=False).head(10)
+        total_sup_rev = cards['total_revenue']
+        cust_df['share'] = (cust_df['rev'] / total_sup_rev * 100) if total_sup_rev > 0 else 0.0
+        top_customers = cust_df[['customer_name', 'orders', 'share']].to_dict('records')
+
+    # Anonymized comparison across ALL suppliers (no competitor names or extra figures exposed)
+    all_sup_lines = OrderDetail.objects.filter(
+        order__order_date__isnull=False
+    ).values(
+        'product__supplier_id'
+    ).annotate(
+        sup_rev=Sum(F('unit_price') * F('quantity') * (1.0 - F('discount')))
+    )
+    all_df = pd.DataFrame(list(all_sup_lines))
+    if not all_df.empty:
+        avg_sup_rev = float(all_df['sup_rev'].mean())
+        best_sup_rev = float(all_df['sup_rev'].max())
+    else:
+        avg_sup_rev = 0.0
+        best_sup_rev = 0.0
+
+    comp_df = pd.DataFrame([
+        {'Benchmark': 'Your Company', 'Revenue': round(float(cards['total_revenue']), 2)},
+        {'Benchmark': 'Supplier Average', 'Revenue': round(avg_sup_rev, 2)},
+        {'Benchmark': 'Best Supplier (Unnamed)', 'Revenue': round(best_sup_rev, 2)},
+    ])
+    fig_comp = px.bar(
+        comp_df,
+        x='Benchmark',
+        y='Revenue',
+        color='Benchmark',
+        title="Supplier Revenue Benchmark",
+        color_discrete_map={
+            'Your Company': '#2b5797',
+            'Supplier Average': '#6c757d',
+            'Best Supplier (Unnamed)': '#198754',
+        }
+    )
+    fig_comp.update_yaxes(tickprefix="$")
+    fig_comp.update_layout(
+        template="plotly_white",
+        height=320,
+        margin=dict(l=20, r=20, t=45, b=20),
+        showlegend=False
+    )
+    benchmark_plot = fig_comp.to_html(full_html=False, include_plotlyjs=False)
+
+    context = {
+        "supplier": supplier,
+        "cards": cards,
+        "has_data": not df.empty,
+        "annual_plot": annual_plot,
+        "order_years": order_years,
+        "top_customers": top_customers,
+        "benchmark_plot": benchmark_plot,
+        "benchmark_stats": {
+            "self_rev": cards['total_revenue'],
+            "avg_rev": avg_sup_rev,
+            "best_rev": best_sup_rev,
+        }
+    }
+    return render(request, "djtraders/suppliers/_supplier_dashboard.html", context)
+
+
+def supplier_monthly_chart(request, supplier_id):
+    """
+    Monthly revenue chart for a chosen year.
+    Guarantees all 12 months (Jan–Dec) are shown, filling missing months with 0.
+    """
+    if _supplier_tab_denied(request, supplier_id):
+        return HttpResponse(status=403)
+
+    supplier = get_object_or_404(Supplier, pk=supplier_id)
+    try:
+        year = int(request.GET.get("year", ""))
+    except ValueError:
+        return HttpResponse("<p class='text-muted small text-center my-4'>Choose a valid year.</p>")
+
+    lines = OrderDetail.objects.filter(
+        product__supplier=supplier,
+        order__order_date__year=year
+    ).values(
+        'order__order_date',
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount'))
+    )
+    df = pd.DataFrame(list(lines))
+
+    month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    monthly_totals = pd.Series(0.0, index=range(1, 13))
+
+    if not df.empty:
+        df['month'] = pd.to_datetime(df['order__order_date']).dt.month
+        grouped = df.groupby('month')['revenue'].sum()
+        monthly_totals = grouped.reindex(range(1, 13), fill_value=0.0)
+
+    chart_df = pd.DataFrame({
+        'Month': month_names,
+        'Revenue': monthly_totals.values
+    })
+    fig = px.bar(
+        chart_df,
+        x='Month',
+        y='Revenue',
+        title=f"Monthly Revenue ({year})",
+        labels={'Revenue': 'Revenue ($)', 'Month': ''}
+    )
+    fig.update_traces(marker_color='#2b5797')
+    fig.update_yaxes(tickprefix="$")
+    fig.update_layout(
+        template="plotly_white",
+        height=340,
+        margin=dict(l=20, r=20, t=45, b=20)
+    )
+    return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
+
+
+def supplier_interactive_charts(request, supplier_id):
+    """
+    AJAX Endpoint: Updates Category Breakdown (Revenue vs. Unit Share %)
+    and Top Products by Revenue without a page reload.
+    """
+    if _supplier_tab_denied(request, supplier_id):
+        return HttpResponse(status=403)
+
+    supplier = get_object_or_404(Supplier, pk=supplier_id)
+    target = request.GET.get("target", "category")   # 'category' or 'products'
+    metric = request.GET.get("metric", "revenue")    # 'revenue' or 'units'
+
+    lines = OrderDetail.objects.filter(
+        product__supplier=supplier,
+        order__order_date__isnull=False
+    ).values(
+        category=F('product__category__category_name'),
+        product_name=F('product__product_name'),
+        revenue=F('unit_price') * F('quantity') * (1.0 - F('discount')),
+        units=F('quantity')
+    )
+    df = pd.DataFrame(list(lines))
+
+    if df.empty:
+        return HttpResponse("<p class='text-muted small text-center my-4'>No product sales on record yet.</p>")
+
+    if target == "category":
+        grouped = df.groupby('category', as_index=False).sum(numeric_only=True)
+        if metric == "units":
+            fig = px.pie(grouped, values='units', names='category', title="Unit Share by Category")
+        else:
+            fig = px.pie(grouped, values='revenue', names='category', title="Revenue Share by Category")
+        fig.update_traces(textposition='inside', textinfo='percent+label')
+    else:
+        grouped = df.groupby('product_name', as_index=False).sum(numeric_only=True)
+        if metric == "units":
+            top_df = grouped.sort_values(by='units', ascending=True).tail(10)
+            fig = px.bar(
+                top_df, x='units', y='product_name', orientation='h',
+                title="Top Products by Units Sold",
+                labels={'units': 'Units Sold', 'product_name': ''}
+            )
+        else:
+            top_df = grouped.sort_values(by='revenue', ascending=True).tail(10)
+            fig = px.bar(
+                top_df, x='revenue', y='product_name', orientation='h',
+                title="Top Products by Revenue",
+                labels={'revenue': 'Revenue ($)', 'product_name': ''}
+            )
+            fig.update_xaxes(tickprefix="$")
+
+    fig.update_layout(template="plotly_white",
+                height=340,
+                margin=dict(l=20, r=20, t=45, b=20),
+                showlegend=False
+    )
+    return HttpResponse(fig.to_html(full_html=False, include_plotlyjs=False))
+
 
 # region [WHY] who may see which employee page
 # An employee's page shows their sales numbers, so it needs a logged-in

@@ -221,6 +221,24 @@ customer_interactive_charts_url = path(
     name="customer_interactive_charts",
 )
 
+supplier_dashboard_url = path(
+    "suppliers/<int:supplier_id>/dashboard/",
+    views.supplier_dashboard,
+    name="supplier_dashboard",
+)
+
+supplier_monthly_chart_url = path(
+    "suppliers/<int:supplier_id>/monthly-chart/",
+    views.supplier_monthly_chart,
+    name="supplier_monthly_chart",
+)
+
+supplier_interactive_charts_url = path(
+    "suppliers/<int:supplier_id>/interactive-charts/",
+    views.supplier_interactive_charts,
+    name="supplier_interactive_charts",
+)
+
 
 # region [CONCEPT] why this list must be named "urlpatterns"
 # ... (existing comment block) ...
@@ -258,7 +276,7 @@ urlpatterns = [
     order_delete_url,
     customer_dashboard_url,
     customer_monthly_chart_url,
-    customer_interactive_charts_url,  # <-- Added here inside the single urlpatterns list
+    customer_interactive_charts_url,  
     customer_info_url,
     customer_orders_url,
     supplier_login_url,
@@ -267,4 +285,7 @@ urlpatterns = [
     supplier_info_url,
     supplier_orders_url,
     supplier_products_url,
+    supplier_dashboard_url,
+    supplier_monthly_chart_url,
+    supplier_interactive_charts_url,
 ]

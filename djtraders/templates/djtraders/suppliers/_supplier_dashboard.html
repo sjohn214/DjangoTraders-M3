@@ -1,0 +1,273 @@
+{% load humanize %}
+
+{% if has_data %}
+    {# 1. Four Summary Cards (Revenue w/ YTD change, Orders, Units Sold, Last Order) #}
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="dt-stat-tile dt-stat-tile-slate card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="dt-stat-label">Product Revenue</div>
+                        <span class="dt-stat-icon"><i class="fa-solid fa-dollar-sign"></i></span>
+                    </div>
+                    <div class="dt-stat-value">${{ cards.total_revenue|floatformat:2|intcomma }}</div>
+                    <div class="dt-stat-note">
+                        <span class="fw-bold {% if cards.rev_change_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            <i class="fa-solid {% if cards.rev_change_pct >= 0 %}fa-arrow-trend-up{% else %}fa-arrow-trend-down{% endif %}"></i>
+                            {{ cards.rev_change_pct|floatformat:1 }}%
+                        </span>
+                        vs prior YTD
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="dt-stat-tile dt-stat-tile-order card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="dt-stat-label">Orders</div>
+                        <span class="dt-stat-icon"><i class="fa-solid fa-receipt"></i></span>
+                    </div>
+                    <div class="dt-stat-value">{{ cards.order_count|intcomma }}</div>
+                    <div class="dt-stat-note">Orders containing your products</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="dt-stat-tile dt-stat-tile-steel card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="dt-stat-label">Units Sold</div>
+                        <span class="dt-stat-icon"><i class="fa-solid fa-boxes-stacked"></i></span>
+                    </div>
+                    <div class="dt-stat-value">{{ cards.units_sold|intcomma }}</div>
+                    <div class="dt-stat-note">Total units shipped</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="dt-stat-tile dt-stat-tile-sage card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="dt-stat-label">Last Order</div>
+                        <span class="dt-stat-icon"><i class="fa-regular fa-calendar-check"></i></span>
+                    </div>
+                    <div class="dt-stat-value fs-4">{{ cards.last_order_date }}</div>
+                    <div class="dt-stat-note">Most recent order date</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# 2. Row 2: Revenue by Year (Left) & Monthly Revenue (Right) Side-by-Side #}
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div id="supplier-annual-box"></div>
+                    <template id="supplier-annual-tpl">{{ annual_plot|safe }}</template>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <nav class="navbar bg-light rounded px-3 py-2 mb-2">
+                        <span class="fw-bold">Monthly Revenue</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="supplier-month-year" class="fw-bold mb-0 small">Year</label>
+                            <select id="supplier-month-year" class="form-select form-select-sm w-auto">
+                                {% for year in order_years %}
+                                    <option value="{{ year }}" {% if forloop.last %}selected{% endif %}>{{ year }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </nav>
+                    <div id="supplier-monthly-box">
+                        <p class="text-muted small text-center my-4">Loading monthly revenue...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# 3. Row 3: Category Share (Left) & Top Products (Right) Side-by-Side #}
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <nav class="navbar bg-light rounded px-3 py-2 mb-2">
+                        <span class="fw-bold">Category Share</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="sup-cat-metric" class="fw-bold mb-0 small">Measure</label>
+                            <select id="sup-cat-metric" class="form-select form-select-sm w-auto">
+                                <option value="revenue" selected>Revenue Share ($)</option>
+                                <option value="units">Unit Share (Qty)</option>
+                            </select>
+                        </div>
+                    </nav>
+                    <div id="sup-category-box">
+                        <p class="text-muted small text-center my-4">Loading category share...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <nav class="navbar bg-light rounded px-3 py-2 mb-2">
+                        <span class="fw-bold">Top Products</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="sup-prod-metric" class="fw-bold mb-0 small">Rank by</label>
+                            <select id="sup-prod-metric" class="form-select form-select-sm w-auto">
+                                <option value="revenue" selected>Revenue ($)</option>
+                                <option value="units">Units Sold</option>
+                            </select>
+                        </div>
+                    </nav>
+                    <div id="sup-product-box">
+                        <p class="text-muted small text-center my-4">Loading top products...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# 4. Row 4: Top Customers by Revenue (Left) & Supplier Revenue Benchmark (Right) Side-by-Side #}
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="h6 fw-bold mb-1">Top Customers by Revenue</h5>
+                    <p class="text-muted small mb-2">Company name, order count, and share of your product revenue.</p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle small mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Company Name</th>
+                                    <th class="text-end">Orders</th>
+                                    <th class="text-end">Share of Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for cust in top_customers %}
+                                    <tr>
+                                        <td>{{ cust.customer_name }}</td>
+                                        <td class="text-end">{{ cust.orders|intcomma }}</td>
+                                        <td class="text-end">{{ cust.share|floatformat:1 }}%</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div id="supplier-benchmark-box"></div>
+                    <template id="supplier-benchmark-tpl">{{ benchmark_plot|safe }}</template>
+                    <div class="d-flex justify-content-around text-center border-top pt-2 mt-2 small">
+                        <div>
+                            <div class="text-muted">Your Revenue</div>
+                            <div class="fw-bold">${{ benchmark_stats.self_rev|floatformat:2|intcomma }}</div>
+                        </div>
+                        <div>
+                            <div class="text-muted">Supplier Average</div>
+                            <div class="fw-bold">${{ benchmark_stats.avg_rev|floatformat:2|intcomma }}</div>
+                        </div>
+                        <div>
+                            <div class="text-muted">Unnamed Best</div>
+                            <div class="fw-bold">${{ benchmark_stats.best_rev|floatformat:2|intcomma }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5">
+            <p class="text-muted mb-0">No placed orders on record for this supplier's products yet.</p>
+{% endif %}
+
+<script>
+    (function() {
+        function renderAllPlots() {
+            function injectPlot(targetId, html) {
+                const container = document.getElementById(targetId);
+                if (!container) return;
+                container.innerHTML = html;
+                const scripts = container.querySelectorAll("script");
+                for (let i = 0; i < scripts.length; i++) {
+                    const oldScript = scripts[i];
+                    const newScript = document.createElement("script");
+                    if (oldScript.src) {
+                        newScript.src = oldScript.src;
+                    } else {
+                        newScript.textContent = oldScript.textContent;
+                    }
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                }
+            }
+
+            // 1. Render Annual Plot first (which defines window.Plotly locally)
+            const annualTpl = document.getElementById("supplier-annual-tpl");
+            if (annualTpl) {
+                injectPlot("supplier-annual-box", annualTpl.innerHTML);
+            }
+
+            // 2. Render Benchmark Plot
+            const benchTpl = document.getElementById("supplier-benchmark-tpl");
+            if (benchTpl) {
+                injectPlot("supplier-benchmark-box", benchTpl.innerHTML);
+            }
+
+            // 3. Monthly Revenue Year Dropdown
+            const monthSelect = document.getElementById("supplier-month-year");
+            const monthUrl = "{% url 'djtraders:supplier_monthly_chart' supplier.supplier_id %}";
+            if (monthSelect) {
+                function loadMonthChart(yr) {
+                    fetch(monthUrl + "?year=" + encodeURIComponent(yr))
+                        .then(function(r) { return r.text(); })
+                        .then(function(html) { injectPlot("supplier-monthly-box", html); });
+                }
+                monthSelect.addEventListener("change", function() {
+                    loadMonthChart(this.value);
+                });
+                loadMonthChart(monthSelect.value);
+            }
+
+            // 4. Interactive Category & Top Product Charts
+            const interactiveUrl = "{% url 'djtraders:supplier_interactive_charts' supplier.supplier_id %}";
+            function loadInteractive(target, metric, boxId) {
+                const url = interactiveUrl + "?target=" + encodeURIComponent(target) + "&metric=" + encodeURIComponent(metric);
+                fetch(url)
+                    .then(function(r) { return r.text(); })
+                    .then(function(html) { injectPlot(boxId, html); });
+            }
+
+            const catSelect = document.getElementById("sup-cat-metric");
+            if (catSelect) {
+                catSelect.addEventListener("change", function() {
+                    loadInteractive("category", this.value, "sup-category-box");
+                });
+                loadInteractive("category", catSelect.value, "sup-category-box");
+            }
+
+            const prodSelect = document.getElementById("sup-prod-metric");
+            if (prodSelect) {
+                prodSelect.addEventListener("change", function() {
+                    loadInteractive("products", this.value, "sup-product-box");
+                });
+                loadInteractive("products", prodSelect.value, "sup-product-box");
+            }
+        }
+
+        renderAllPlots();
+    })();
+</script>
+
+
